@@ -43,13 +43,25 @@ export default function ProjectsPage() {
     if (!data) return;
 
     // Get task counts per project
-    const withCounts = await Promise.all(
-      data.map(async (p) => {
-        const { count: task_count } = await supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('project_id', p.id);
-        const { count: done_count } = await supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('project_id', p.id).eq('status', 'done');
-        return { ...p, task_count: task_count ?? 0, done_count: done_count ?? 0 };
-      })
-    );
+    // Batch: fetch all tasks once, count client-side
+    const projectIds = data.map((p) => p.id);
+    const { data: allTasks } = await supabase
+      .from('tasks')
+      .select('id, project_id, status')
+      .in('project_id', projectIds);
+
+    const tasksByProject = (allTasks || []).reduce<Record<string, { total: number; done: number }>>((acc, t) => {
+      if (!acc[t.project_id]) acc[t.project_id] = { total: 0, done: 0 };
+      acc[t.project_id].total++;
+      if (t.status === 'done') acc[t.project_id].done++;
+      return acc;
+    }, {});
+
+    const withCounts = data.map((p) => ({
+      ...p,
+      task_count: tasksByProject[p.id]?.total ?? 0,
+      done_count: tasksByProject[p.id]?.done ?? 0,
+    }));
     setProjects(withCounts);
   }
 

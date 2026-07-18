@@ -32,13 +32,24 @@ export default function LeaderboardPage() {
         .order('points', { ascending: false });
       if (!profiles) return;
 
-      const enriched = await Promise.all(
-        profiles.map(async (p) => {
-          const { count: tasks_total } = await supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('assignee_id', p.id);
-          const { count: tasks_done } = await supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('assignee_id', p.id).eq('status', 'done');
-          return { ...p, tasks_total: tasks_total ?? 0, tasks_done: tasks_done ?? 0 };
-        })
-      );
+      // Batch: fetch all tasks once, count client-side
+      const { data: allTasks } = await supabase
+        .from('tasks')
+        .select('assignee_id, status');
+
+      const tasksByUser = (allTasks || []).reduce<Record<string, { total: number; done: number }>>((acc, t) => {
+        if (!t.assignee_id) return acc;
+        if (!acc[t.assignee_id]) acc[t.assignee_id] = { total: 0, done: 0 };
+        acc[t.assignee_id].total++;
+        if (t.status === 'done') acc[t.assignee_id].done++;
+        return acc;
+      }, {});
+
+      const enriched = profiles.map((p) => ({
+        ...p,
+        tasks_total: tasksByUser[p.id]?.total ?? 0,
+        tasks_done: tasksByUser[p.id]?.done ?? 0,
+      }));
       setEntries(enriched);
     }
     load();

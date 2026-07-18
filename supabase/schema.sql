@@ -87,7 +87,7 @@ create policy "comments_insert" on public.comments for insert with check (auth.u
 -- Notifications: user can read/update own
 create policy "notifications_read" on public.notifications for select using (auth.uid() = user_id);
 create policy "notifications_update" on public.notifications for update using (auth.uid() = user_id);
-create policy "notifications_insert" on public.notifications for insert with check (true);
+create policy "notifications_insert" on public.notifications for insert with check (auth.uid() is not null);
 
 -- Auto-create profile on signup
 create or replace function public.handle_new_user()

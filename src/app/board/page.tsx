@@ -42,7 +42,6 @@ export default function BoardPage() {
   // Filters
   const [filterProject, setFilterProject] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
 
   useEffect(() => {
     if (!loading && !user) router.replace('/auth');
@@ -56,11 +55,10 @@ export default function BoardPage() {
 
     if (filterProject) query = query.eq('project_id', filterProject);
     if (filterAssignee) query = query.eq('assignee_id', filterAssignee);
-    if (filterStatus) query = query.eq('status', filterStatus);
 
     const { data } = await query;
     if (data) setTasks(data);
-  }, [filterProject, filterAssignee, filterStatus]);
+  }, [filterProject, filterAssignee]);
 
   useEffect(() => {
     if (!user) return;
@@ -75,8 +73,6 @@ export default function BoardPage() {
   }
 
   if (loading || !user) return null;
-
-  const filteredTasks = tasks;
 
   return (
     <Shell>
@@ -114,7 +110,7 @@ export default function BoardPage() {
       {/* Kanban columns */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {COLUMNS.map((col) => {
-          const colTasks = filteredTasks.filter((t) => t.status === col.key);
+          const colTasks = tasks.filter((t) => t.status === col.key);
           return (
             <div
               key={col.key}

@@ -2,7 +2,7 @@
 
 Project management platform for the Hult Cohort Developer Program Summer Pilot 2026.
 
-**Production URL:** _(deployed on Vercel — see PR)_
+**Production URL:** https://pm-artira-azure.vercel.app
 
 ## Architecture
 
