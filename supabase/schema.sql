@@ -72,13 +72,19 @@ create policy "projects_insert" on public.projects for insert with check (auth.u
 create policy "projects_update" on public.projects for update using (auth.uid() = owner_id);
 create policy "projects_delete" on public.projects for delete using (auth.uid() = owner_id);
 
--- Tasks: everyone can read, creator/assignee can update, creator can insert/delete
+-- Tasks: everyone reads; project owner (via projects.owner_id) has full CRUD;
+--         assignee can update only their own assigned tasks (status changes)
 create policy "tasks_read" on public.tasks for select using (true);
-create policy "tasks_insert" on public.tasks for insert with check (auth.uid() = creator_id);
-create policy "tasks_update" on public.tasks for update using (
-  auth.uid() = creator_id or auth.uid() = assignee_id
+create policy "tasks_insert" on public.tasks for insert with check (
+  exists (select 1 from public.projects where id = project_id and owner_id = auth.uid())
 );
-create policy "tasks_delete" on public.tasks for delete using (auth.uid() = creator_id);
+create policy "tasks_update" on public.tasks for update using (
+  exists (select 1 from public.projects where id = project_id and owner_id = auth.uid())
+  or auth.uid() = assignee_id
+);
+create policy "tasks_delete" on public.tasks for delete using (
+  exists (select 1 from public.projects where id = project_id and owner_id = auth.uid())
+);
 
 -- Comments: everyone can read, author can insert
 create policy "comments_read" on public.comments for select using (true);
