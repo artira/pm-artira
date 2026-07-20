@@ -4,6 +4,15 @@ import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 
+function validatePassword(pw: string): string | null {
+  if (pw.length < 8) return 'Password must be at least 8 characters';
+  if (!/[a-z]/.test(pw)) return 'Password must include a lowercase letter';
+  if (!/[A-Z]/.test(pw)) return 'Password must include an uppercase letter';
+  if (!/[0-9]/.test(pw)) return 'Password must include a number';
+  if (!/[^a-zA-Z0-9]/.test(pw)) return 'Password must include a special character (!@#$%...)';
+  return null;
+}
+
 export default function AuthPage() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -20,15 +29,46 @@ export default function AuthPage() {
     setLoading(true);
 
     if (mode === 'signup') {
+      // Client-side password strength check
+      const pwError = validatePassword(password);
+      if (pwError) { setError(pwError); setLoading(false); return; }
+
       const { error } = await signUp(email, password, displayName || email.split('@')[0]);
       if (error) { setError(error); setLoading(false); return; }
     }
-    // Always sign in (signup auto-signs in with Supabase if email confirm is off)
+
     const { error: signInError } = await signIn(email, password);
-    if (signInError) { setError(signInError); setLoading(false); return; }
+    if (signInError) {
+      // Friendly message for rate limit
+      if (signInError.toLowerCase().includes('rate') || signInError.toLowerCase().includes('limit')) {
+        setError('Too many attempts. Please wait a minute and try again.');
+      } else {
+        setError(signInError);
+      }
+      setLoading(false);
+      return;
+    }
 
     router.push('/dashboard');
   }
+
+  // Live password strength indicator for signup
+  const pwStrength = mode === 'signup' && password.length > 0
+    ? {
+        length: password.length >= 8,
+        lower: /[a-z]/.test(password),
+        upper: /[A-Z]/.test(password),
+        number: /[0-9]/.test(password),
+        special: /[^a-zA-Z0-9]/.test(password),
+      }
+    : null;
+
+  const pwScore = pwStrength
+    ? [pwStrength.length, pwStrength.lower, pwStrength.upper, pwStrength.number, pwStrength.special].filter(Boolean).length
+    : 0;
+
+  const pwLabel = pwScore <= 2 ? 'Weak' : pwScore <= 3 ? 'Fair' : pwScore <= 4 ? 'Good' : 'Strong';
+  const pwColor = pwScore <= 2 ? 'var(--danger)' : pwScore <= 3 ? 'var(--orange, var(--warning))' : pwScore <= 4 ? 'var(--warning)' : 'var(--success)';
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--bg)' }}>
@@ -43,12 +83,19 @@ export default function AuthPage() {
         </div>
 
         <div
-          className="rounded-lg p-6 border"
+          className="rounded-xl p-6 border"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
           {error && (
-            <div className="mb-4 text-sm px-3 py-2 rounded" style={{ background: 'var(--danger-light)', color: 'var(--danger)' }}>
+            <div className="mb-4 text-sm px-3 py-2 rounded-lg" style={{ background: 'var(--danger-light)', color: 'var(--danger)' }}>
               {error}
+            </div>
+          )}
+
+          {/* Demo accounts hint */}
+          {mode === 'signin' && (
+            <div className="mb-4 text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+              Demo: <strong>sofia.martinez@demo.cohort</strong> / <strong>demo1234</strong>
             </div>
           )}
 
@@ -62,7 +109,7 @@ export default function AuthPage() {
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full px-3 py-2 rounded border text-sm outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-blue-500/30"
                   style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
                   placeholder="Your name"
                 />
@@ -78,7 +125,7 @@ export default function AuthPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 rounded border text-sm outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-blue-500/30"
                 style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
                 placeholder="you@example.com"
               />
@@ -91,19 +138,44 @@ export default function AuthPage() {
               <input
                 type="password"
                 required
-                minLength={6}
+                minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 rounded border text-sm outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-blue-500/30"
                 style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
                 placeholder="••••••••"
               />
+
+              {/* Password strength meter */}
+              {pwStrength && (
+                <div className="mt-2">
+                  <div className="flex gap-1 mb-1">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div
+                        key={i}
+                        className="h-1 flex-1 rounded-full transition-colors"
+                        style={{ background: i <= pwScore ? pwColor : 'var(--border)' }}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span style={{ color: pwColor }}>{pwLabel}</span>
+                    <div className="space-x-2" style={{ color: 'var(--text-muted)' }}>
+                      <span style={{ color: pwStrength.length ? 'var(--success)' : undefined }}>8+ chars</span>
+                      <span style={{ color: pwStrength.upper ? 'var(--success)' : undefined }}>A-Z</span>
+                      <span style={{ color: pwStrength.lower ? 'var(--success)' : undefined }}>a-z</span>
+                      <span style={{ color: pwStrength.number ? 'var(--success)' : undefined }}>0-9</span>
+                      <span style={{ color: pwStrength.special ? 'var(--success)' : undefined }}>!@#</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2 rounded text-sm font-medium text-white transition-colors disabled:opacity-50"
+              className="w-full py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
               style={{ background: 'var(--accent)' }}
             >
               {loading ? 'Loading...' : mode === 'signin' ? 'Sign in' : 'Create account'}

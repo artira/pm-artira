@@ -73,7 +73,7 @@ create policy "projects_update" on public.projects for update using (auth.uid() 
 create policy "projects_delete" on public.projects for delete using (auth.uid() = owner_id);
 
 -- Tasks: everyone reads; project owner (via projects.owner_id) has full CRUD;
---         assignee can update only their own assigned tasks (status changes)
+--         assignee can update only their own assigned tasks
 create policy "tasks_read" on public.tasks for select using (true);
 create policy "tasks_insert" on public.tasks for insert with check (
   exists (select 1 from public.projects where id = project_id and owner_id = auth.uid())
@@ -85,6 +85,33 @@ create policy "tasks_update" on public.tasks for update using (
 create policy "tasks_delete" on public.tasks for delete using (
   exists (select 1 from public.projects where id = project_id and owner_id = auth.uid())
 );
+
+-- Prevent assignees from changing anything except status
+-- (blocks point inflation by rewriting priority before completing)
+create or replace function public.enforce_assignee_update()
+returns trigger as $$
+begin
+  -- If the user is the project owner, allow all changes
+  if exists (select 1 from public.projects where id = new.project_id and owner_id = auth.uid()) then
+    return new;
+  end if;
+  -- Assignee: only status may change; revert everything else to old values
+  new.title := old.title;
+  new.description := old.description;
+  new.priority := old.priority;
+  new.due_date := old.due_date;
+  new.assignee_id := old.assignee_id;
+  new.creator_id := old.creator_id;
+  new.project_id := old.project_id;
+  new.created_at := old.created_at;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists enforce_assignee_fields on public.tasks;
+create trigger enforce_assignee_fields
+  before update on public.tasks
+  for each row execute function public.enforce_assignee_update();
 
 -- Comments: everyone can read, author can insert
 create policy "comments_read" on public.comments for select using (true);
